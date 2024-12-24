@@ -6,14 +6,11 @@ where
     T: Hash + ?Sized,
     S: BuildHasher,
 {
-    use core::hash::Hasher;
-    let mut state = hash_builder.build_hasher();
-    val.hash(&mut state);
-    state.finish()
+    hash_builder.hash_one(val)
 }
 
 /// Creates a hasher
-pub(crate) fn make_hasher<T, S>(hash_builder: &S) -> impl Fn(&T) -> u64 + '_
+pub(crate) fn make_hasher<T, S>(hash_builder: &S) -> impl '_ + Fn(&T) -> u64
 where
     T: Hash,
     S: BuildHasher,
