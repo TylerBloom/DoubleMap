@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, hash::Hash};
 
     use cycle_map::{CycleMap, InsertOptional, OptionalPair};
     use OptionalPair::*;
@@ -9,6 +9,15 @@ mod tests {
     struct TestingStruct {
         pub(crate) value: u64,
         pub(crate) data: String,
+    }
+
+    impl TestingStruct {
+        pub(crate) fn from_value(value: u64) -> Self {
+            Self {
+                value,
+                data: value.to_string(),
+            }
+        }
     }
 
     fn construct_default_map() -> CycleMap<String, TestingStruct> {
@@ -347,12 +356,21 @@ mod tests {
         assert!(!map.are_paired(&"0".to_string(), &TestingStruct::from_value(1)));
     }
 
-    impl TestingStruct {
-        pub(crate) fn from_value(value: u64) -> Self {
-            Self {
-                value,
-                data: value.to_string(),
+    #[test]
+    fn hash_collision() {
+        #[derive(Debug, PartialEq, Eq)]
+        struct Collide(usize);
+
+        impl Hash for Collide {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                (42).hash(state);
             }
+        }
+
+        let map: CycleMap<_, _> = (0..100).map(|i| (Collide(i), i.to_string())).collect();
+        assert_eq!(map.len(), 100);
+        for i in 0..100 {
+            assert_eq!(map.get_right(&Collide(i)).unwrap(), &i.to_string());
         }
     }
 }

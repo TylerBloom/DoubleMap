@@ -52,16 +52,15 @@ pub(crate) fn just_id<Q: PartialEq>(id: u64) -> impl Fn(&MappingPair<Q>) -> bool
 ///
 /// # Examples
 /// ```
-/// use cycle_map::{PartialCycleMap, OptionalPair};
-/// use OptionalPair::*;
+/// use cycle_map::{PartialCycleMap, EitherOrBoth};
+/// use EitherOrBoth::*;
 ///
-/// let values: Vec<OptionalPair<&str, u64>> =
-///              vec![ SomeBoth("zero", 0), SomeBoth("one", 1), SomeBoth("two", 2),
-///                    SomeBoth("three", 3), SomeBoth("four", 4), SomeBoth("five", 5),
-///                    SomeLeft("six"), SomeLeft("seven"), SomeLeft("eight"),
-///                    SomeLeft("nine"), ];
+/// let values = vec![ Both("zero", 0), Both("one", 1), Both("two", 2),
+///                    Both("three", 3), Both("four", 4), Both("five", 5),
+///                    Left("six"), Left("seven"), Left("eight"),
+///                    Left("nine"), ];
 ///
-/// let mut converter: PartialCycleMap<&str, u64> = values.iter().cloned().collect();
+/// let mut converter: PartialCycleMap<_, _> = values.iter().cloned().collect();
 ///
 /// // The map should contain 10 items in the left set ...
 /// assert_eq!(converter.len_left(), 10);
@@ -192,13 +191,11 @@ where
     ///
     /// Note: If you want to swap the left item in a pair, use the [`swap_left`] method.
     ///
-    /// Also Note: This method will never return the `SomeLeft` variant of `OptionalPair`.
-    ///
     /// # Examples
     /// ```rust
     /// use cycle_map::{PartialCycleMap, OptionalPair::*};
     ///
-    /// let mut map: PartialCycleMap<u64, String> = (0..5).map(|i| (i, i.to_string())).collect();
+    /// let mut map: PartialCycleMap<_, _> = (0..5).map(|i| (i, i.to_string())).collect();
     ///
     /// // 5 is not in map
     /// let op = map.insert_left(5);
@@ -217,18 +214,15 @@ where
     pub fn insert_left(&mut self, left: L) -> OptionalPair<L, R> {
         let opt_from_left = self.remove_via_left(&left);
         let digest = opt_from_left;
-        let l_hash = make_hash::<L, S>(&self.hash_builder, &left);
+        let l_hash = make_hash(&self.hash_builder, &left);
         let left_pairing = MappingPair {
             value: left,
             hash: None,
             id: self.counter,
         };
         self.counter += 1;
-        self.left_set.insert_unique(
-            l_hash,
-            left_pairing,
-            make_hasher::<MappingPair<L>, S>(&self.hash_builder),
-        );
+        self.left_set
+            .insert_unique(l_hash, left_pairing, make_hasher(&self.hash_builder));
         digest
     }
 
@@ -238,8 +232,6 @@ where
     /// a left item, the pair is removed.
     ///
     /// Note: If you want to swap the right item in a pair, use the [`swap_right`] method.
-    ///
-    /// Also Note: This method will never return the `SomeLeft` variant of `OptionalPair`.
     ///
     /// # Examples
     /// ```rust
@@ -264,18 +256,15 @@ where
     pub fn insert_right(&mut self, right: R) -> OptionalPair<L, R> {
         let opt_from_right = self.remove_via_right(&right);
         let digest = opt_from_right;
-        let r_hash = make_hash::<R, S>(&self.hash_builder, &right);
+        let r_hash = make_hash(&self.hash_builder, &right);
         let right_pairing = MappingPair {
             value: right,
             hash: None,
             id: self.counter,
         };
         self.counter += 1;
-        self.right_set.insert_unique(
-            r_hash,
-            right_pairing,
-            make_hasher::<MappingPair<R>, S>(&self.hash_builder),
-        );
+        self.right_set
+            .insert_unique(r_hash, right_pairing, make_hasher(&self.hash_builder));
         digest
     }
 
@@ -305,8 +294,8 @@ where
     ///
     /// [`pair_forced`]: struct.PartialCycleMap.html#method.pair_forced
     pub fn pair(&mut self, left: &L, right: &R) -> bool {
-        let l_hash = make_hash::<L, S>(&self.hash_builder, left);
-        let r_hash = make_hash::<R, S>(&self.hash_builder, right);
+        let l_hash = make_hash(&self.hash_builder, left);
+        let r_hash = make_hash(&self.hash_builder, right);
         let opt_left = self.left_set.find_mut(l_hash, equivalent_key(left));
         let opt_right = self.right_set.find_mut(r_hash, equivalent_key(right));
         match (opt_left, opt_right) {
@@ -356,8 +345,8 @@ where
         if self.are_paired(l, r) {
             return Neither;
         }
-        let l_hash = make_hash::<L, S>(&self.hash_builder, l);
-        let r_hash = make_hash::<R, S>(&self.hash_builder, r);
+        let l_hash = make_hash(&self.hash_builder, l);
+        let r_hash = make_hash(&self.hash_builder, r);
         let opt_left = self.left_set.find_mut(l_hash, equivalent_key(l));
         let opt_right = self.right_set.find_mut(r_hash, equivalent_key(r));
         match (opt_left, opt_right) {
@@ -1201,16 +1190,15 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, EitherOrBoth};
     ///
     /// let map: PartialCycleMap<u64, String> = (0..5).map(|i| (i, i.to_string())).collect();
     ///
     /// for op in map.iter() {
     ///     match op {
-    ///         SomeBoth(l, r) => { println!("left: {l}, right: {r}"); }
-    ///         SomeLeft(l) => { println!("just left: {l}"); }
-    ///         SomeRight(r) => { println!("just right: {r}"); }
-    ///         _ => { unreachable!("Never Neither"); }
+    ///         EitherOrBoth::Both(l, r) => { println!("left: {l}, right: {r}"); }
+    ///         EitherOrBoth::Left(l) => { println!("just left: {l}"); }
+    ///         EitherOrBoth::Right(r) => { println!("just right: {r}"); }
     ///     }
     /// }
     /// ```
@@ -1247,15 +1235,14 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, Either};
     ///
     /// let map: PartialCycleMap<u64, String> = (0..5).map(|i| (i, i.to_string())).collect();
     ///
     /// for op in map.iter_unpaired() {
     ///     match op {
-    ///         SomeLeft(l) => { println!("just left: {l}"); }
-    ///         SomeRight(r) => { println!("just right: {r}"); }
-    ///         _ => { unreachable!("Never Neither or SomeBoth"); }
+    ///         Either::Left(l) => { println!("just left: {l}"); }
+    ///         Either::Right(r) => { println!("just right: {r}"); }
     ///     }
     /// }
     /// ```
@@ -1312,7 +1299,7 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, EitherOrBoth};
     ///
     /// let mut map = PartialCycleMap::new();
     /// map.insert(1, "1");
@@ -1321,11 +1308,11 @@ where
     ///
     /// for op in map.drain().take(1) {
     ///     match op {
-    ///         SomeBoth(l,r) => {
+    ///         EitherOrBoth::Both(l, r) => {
     ///             assert!(l == 1 || l == 2);
     ///             assert!(r == "1" || r == "2");
     ///         }
-    ///         _ => { unreachable!("Only pairs were inserted."); }
+    ///         _ => unreachable!("Only pairs were inserted."),
     ///     }
     /// }
     ///
@@ -1366,13 +1353,13 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, EitherOrBoth};
     ///
     /// let mut map: PartialCycleMap<u64, String> = (0..50).map(|i| (i,i.to_string())).collect();
-    /// map.extend( (50..100).map(|i| SomeLeft(i)) );
+    /// map.extend( (50..100).map(|i| EitherOrBoth::Left(i)) );
     ///
     /// // Iterate over the map, remove all unpaired left items
-    /// for op in map.drain_filter(|op| if let SomeLeft(_) = op { true } else { false }) {
+    /// for op in map.extract_if(|op| matches!(op, EitherOrBoth::Left(_))) {
     ///     assert!(op.get_left().is_some());
     ///     assert!(op.get_right().is_none());
     /// }
@@ -1455,13 +1442,13 @@ where
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, EitherOrBoth};
     ///
     /// let mut map: PartialCycleMap<u64, String> = (0..50).map(|i| (i,i.to_string())).collect();
-    /// map.extend( (50..100).map(|i| SomeLeft(i)) );
+    /// map.extend( (50..100).map(|i| EitherOrBoth::Left(i)) );
     ///
     /// // Iterate over the map, remove all unpaired left items
-    /// map.retain(|op| if let SomeLeft(_) = op { true } else { false });
+    /// map.retain(|op| matches!(op, EitherOrBoth::Left(_)));
     ///
     /// assert_eq!(map.len_left(), 50);
     /// ```
@@ -1473,19 +1460,20 @@ where
     }
 
     /// Drops all pairs that cause the predicate to return `false` while keeping the backing memory
-    /// allocated
+    /// allocated. All unpaired items are left alone.
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, EitherOrBoth};
     ///
     /// let mut map: PartialCycleMap<u64, String> = (0..50).map(|i| (i,i.to_string())).collect();
-    /// map.extend( (50..100).map(|i| SomeLeft(i)) );
+    /// map.extend( (50..100).map(|i| EitherOrBoth::Left(i)) );
     ///
     /// // Iterate over the map, remove all pairs with an odd left item
     /// map.retain_paired(|l, r| l % 2 == 0);
     ///
     /// assert_eq!(map.len_left(), 75);
+    /// assert_eq!(map.len_right(), 25);
     /// ```
     pub fn retain_paired<F>(&mut self, mut f: F)
     where
@@ -1497,39 +1485,40 @@ where
                     todo!()
                 };
                 let do_remove = f(&left.value, &entry.get().value);
-                if do_remove {
+                if !do_remove {
                     entry.remove();
                 }
                 do_remove
             } else {
-                false
+                true
             }
         })
     }
 
     /// Drops all unpaired items that cause the predicate to return `false` while keeping the
-    /// backing memory allocated
+    /// backing memory allocated. All paired items are left alone.
     ///
     /// # Examples
     /// ```rust
-    /// use cycle_map::{PartialCycleMap, OptionalPair::*};
+    /// use cycle_map::{PartialCycleMap, Either};
     ///
     /// let mut map: PartialCycleMap<u64, String> = (0..50).map(|i| (i,i.to_string())).collect();
-    /// map.extend( (50..100).map(|i| SomeLeft(i)) );
+    /// map.extend( (50..100).map(|i| Either::Left(i)) );
     ///
     /// // Iterate over the map, remove all unpaired odd left items
-    /// map.retain_unpaired(|op| if let SomeLeft(l) = op { *l % 2 == 0 } else { true });
+    /// map.retain_unpaired(|op| if let Either::Left(l) = op { *l % 2 == 0 } else { true });
     ///
     /// assert_eq!(map.len_left(), 75);
+    /// assert_eq!(map.len_right(), 50);
     /// ```
     pub fn retain_unpaired<F>(&mut self, mut f: F)
     where
         F: FnMut(Either<&L, &R>) -> bool,
     {
         self.left_set
-            .retain(|item| item.hash.is_none() && f(Either::Left(&item.value)));
+            .retain(|item| item.hash.is_some() || f(Either::Left(&item.value)));
         self.right_set
-            .retain(|item| item.hash.is_none() && f(Either::Right(&item.value)));
+            .retain(|item| item.hash.is_some() || f(Either::Right(&item.value)));
     }
 
     /// Shrinks the capacity of the left set with a lower limit. It will drop down no lower than the
@@ -1909,25 +1898,45 @@ where
     }
 }
 
-impl<L, R, S> Extend<OptionalPair<L, R>> for PartialCycleMap<L, R, S>
+impl<L, R, S> Extend<EitherOrBoth<L, R>> for PartialCycleMap<L, R, S>
 where
     L: Hash + Eq,
     R: Hash + Eq,
     S: BuildHasher,
 {
     #[inline]
-    fn extend<T: IntoIterator<Item = OptionalPair<L, R>>>(&mut self, iter: T) {
+    fn extend<T: IntoIterator<Item = EitherOrBoth<L, R>>>(&mut self, iter: T) {
         for op in iter {
             match op {
-                Neither => {}
-                SomeLeft(l) => {
+                EitherOrBoth::Left(l) => {
                     self.insert_left(l);
                 }
-                SomeRight(r) => {
+                EitherOrBoth::Right(r) => {
                     self.insert_right(r);
                 }
-                SomeBoth(l, r) => {
+                EitherOrBoth::Both(l, r) => {
                     self.insert(l, r);
+                }
+            }
+        }
+    }
+}
+
+impl<L, R, S> Extend<Either<L, R>> for PartialCycleMap<L, R, S>
+where
+    L: Hash + Eq,
+    R: Hash + Eq,
+    S: BuildHasher,
+{
+    #[inline]
+    fn extend<T: IntoIterator<Item = Either<L, R>>>(&mut self, iter: T) {
+        for op in iter {
+            match op {
+                Either::Left(l) => {
+                    self.insert_left(l);
+                }
+                Either::Right(r) => {
+                    self.insert_right(r);
                 }
             }
         }
@@ -1946,12 +1955,24 @@ where
     }
 }
 
-impl<L, R> FromIterator<OptionalPair<L, R>> for PartialCycleMap<L, R>
+impl<L, R> FromIterator<EitherOrBoth<L, R>> for PartialCycleMap<L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
 {
-    fn from_iter<T: IntoIterator<Item = OptionalPair<L, R>>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = EitherOrBoth<L, R>>>(iter: T) -> Self {
+        let mut digest = PartialCycleMap::default();
+        digest.extend(iter);
+        digest
+    }
+}
+
+impl<L, R> FromIterator<Either<L, R>> for PartialCycleMap<L, R>
+where
+    L: Hash + Eq,
+    R: Hash + Eq,
+{
+    fn from_iter<T: IntoIterator<Item = Either<L, R>>>(iter: T) -> Self {
         let mut digest = PartialCycleMap::default();
         digest.extend(iter);
         digest

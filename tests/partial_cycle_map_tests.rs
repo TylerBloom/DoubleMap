@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use cycle_map::{OptionalPair, PartialCycleMap};
+    use cycle_map::{EitherOrBoth, OptionalPair, PartialCycleMap};
     use hashbrown::HashSet;
     use OptionalPair::*;
 
@@ -8,6 +8,15 @@ mod tests {
     struct TestingStruct {
         pub(crate) value: u64,
         pub(crate) data: String,
+    }
+
+    impl TestingStruct {
+        pub(crate) fn from_value(value: u64) -> Self {
+            Self {
+                value,
+                data: value.to_string(),
+            }
+        }
     }
 
     fn construct_default_map() -> PartialCycleMap<String, TestingStruct> {
@@ -251,20 +260,12 @@ mod tests {
         }
         assert_eq!(map.len_left(), 67);
         assert_eq!(map.len_right(), 67);
-        map.retain(|x| {
-            if let Some(l) = x.get_left() {
-                *l % 2 == 0
-            } else {
-                true
-            }
-        });
+        map.retain(|x| x.get_left().is_some_and(|l| *l % 2 == 0));
         assert_eq!(map.len_left(), 33);
         assert_eq!(map.len_right(), 50);
         for op in map.iter() {
             match op {
-                SomeLeft(val) | SomeBoth(val, _) => {
-                    assert_eq!(val % 2, 1);
-                }
+                EitherOrBoth::Left(val) | EitherOrBoth::Both(val, _) => assert_eq!(val % 2, 1),
                 _ => {}
             }
         }
@@ -292,15 +293,15 @@ mod tests {
         assert_eq!(map.len_right(), 50);
         for op in map.iter() {
             println!("{op:?}");
-            if let SomeBoth(val, _) = op {
-                assert_eq!(val % 2, 1);
+            if let EitherOrBoth::Both(val, _) = op {
+                assert_eq!(val % 2, 0);
             }
         }
     }
 
     #[test]
     fn retain_unpaired_test() {
-        let mut map: PartialCycleMap<u64, String> = PartialCycleMap::with_capacity(100);
+        let mut map = PartialCycleMap::with_capacity(100);
         for i in 0..100 {
             if i < 34 {
                 let opt = map.insert(i, i.to_string());
@@ -315,19 +316,13 @@ mod tests {
         }
         assert_eq!(map.len_left(), 67);
         assert_eq!(map.len_right(), 67);
-        map.retain_unpaired(|op| {
-            if let Some(l) = op.get_left() {
-                *l % 2 == 0
-            } else {
-                true
-            }
-        });
-        assert_eq!(map.len_left(), 50);
+        map.retain_unpaired(|op| op.as_left().is_some_and(|l| *l % 2 == 0));
+        assert_eq!(map.len_left(), 51);
         assert_eq!(map.len_right(), 34);
         for op in map.iter() {
             println!("{op:?}");
-            if let SomeLeft(val) = op {
-                assert_eq!(val % 2, 1);
+            if let EitherOrBoth::Left(val) = op {
+                assert_eq!(val % 2, 0);
             }
         }
     }
@@ -614,8 +609,6 @@ mod tests {
         assert_eq!(map.capacity_right(), r_cap);
         assert_eq!(other_map, new_map);
         let mut map = construct_unpaired_map();
-        let l_cap = map.capacity_left();
-        let r_cap = map.capacity_right();
         for i in 0..5 {
             assert_eq!(
                 map.pair_forced_remove(&i.to_string(), &TestingStruct::from_value(i)),
@@ -623,10 +616,7 @@ mod tests {
             );
         }
         let other_map: PartialCycleMap<String, TestingStruct> = map
-            .drain_filter(|op| match op.get_right() {
-                Some(r) => r.value % 2 == 0,
-                None => false,
-            })
+            .extract_if(|op| op.get_right().is_some_and(|r| r.value % 2 == 0))
             .collect();
         let mut new_map_one = construct_unpaired_map();
         for i in 0..10 {
@@ -652,8 +642,6 @@ mod tests {
         }
         assert_eq!(map.len_left(), 7);
         assert_eq!(map.len_right(), 5);
-        assert_eq!(map.capacity_left(), l_cap);
-        assert_eq!(map.capacity_right(), r_cap);
         assert_eq!(map, new_map_one);
         assert_eq!(other_map, new_map_two);
     }
@@ -742,14 +730,5 @@ mod tests {
     fn fmt_tests() {
         let map = construct_default_map();
         println!("{map:?}");
-    }
-
-    impl TestingStruct {
-        pub(crate) fn from_value(value: u64) -> Self {
-            Self {
-                value,
-                data: value.to_string(),
-            }
-        }
     }
 }

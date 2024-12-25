@@ -36,11 +36,62 @@ pub enum Either<L, R> {
     Right(R),
 }
 
+impl<L,R> Either<L, R> {
+    pub fn as_left(&self) -> Option<&L> {
+        match self {
+            Self::Left(left) => Some(left),
+            Self::Right(_) => None,
+        }
+    }
+
+    pub fn as_right(&self) -> Option<&R> {
+        match self {
+            Self::Left(_) => None,
+            Self::Right(right) => Some(right),
+        }
+    }
+}
+
+impl<L: Clone, R: Clone> Either<&L, &R> {
+    pub fn cloned(self) -> Either<L, R> {
+        match self {
+            Self::Left(left) => Either::Left(left.clone()),
+            Self::Right(right) => Either::Right(right.clone()),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, derive_more::IsVariant)]
 pub enum EitherOrBoth<L, R> {
     Left(L),
     Right(R),
     Both(L, R),
+}
+
+impl<L, R> EitherOrBoth<L, R> {
+    pub fn get_left(&self) -> Option<&L> {
+        match self {
+            Self::Left(left) | Self::Both(left, _) => Some(left),
+            Self::Right(_) => None,
+        }
+    }
+
+    pub fn get_right(&self) -> Option<&R> {
+        match self {
+            Self::Right(right) | Self::Both(_, right) => Some(right),
+            Self::Left(_) => None,
+        }
+    }
+}
+
+impl<L: Clone, R: Clone> EitherOrBoth<&L, &R> {
+    pub fn cloned(self) -> EitherOrBoth<L, R> {
+        match self {
+            Self::Left(left) => EitherOrBoth::Left(left.clone()),
+            Self::Right(right) => EitherOrBoth::Right(right.clone()),
+            Self::Both(left, right) => EitherOrBoth::Both(left.clone(), right.clone()),
+        }
+    }
 }
 
 use OptionalPair::*;
