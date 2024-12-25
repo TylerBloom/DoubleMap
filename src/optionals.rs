@@ -18,12 +18,8 @@ use std::fmt;
 ///     SomeBoth(left, right) => { /*...*/ },
 /// }
 /// ```
-#[derive(PartialEq, Eq)]
-pub enum OptionalPair<L, R>
-where
-    L: Eq,
-    R: Eq,
-{
+#[derive(Clone, PartialEq, Eq)]
+pub enum OptionalPair<L, R> {
     /// Equivalent to `Option`'s `None` variant
     Neither,
     /// Equivalent to `Some(Some((left, right)), None)`
@@ -34,20 +30,28 @@ where
     SomeBoth(L, R),
 }
 
+#[derive(Clone, PartialEq, Eq, derive_more::IsVariant)]
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
+#[derive(Clone, PartialEq, Eq, derive_more::IsVariant)]
+pub enum EitherOrBoth<L, R> {
+    Left(L),
+    Right(R),
+    Both(L, R),
+}
+
 use OptionalPair::*;
 
 /// A shorthand for an optional pair of tuples used in some map insert methods
 pub type InsertOptional<L, R> = OptionalPair<(L, R), (L, R)>;
-//pub type SwapOptional<I, P> = OptionalPair<I, P>;
 
-impl<L, R> OptionalPair<L, R>
-where
-    L: Eq,
-    R: Eq,
-{
+impl<L, R> OptionalPair<L, R> {
     /// Returns true if `self` is `OptionalPair::Neither` and false otherwise
     pub fn is_none(&self) -> bool {
-        *self == OptionalPair::Neither
+        matches!(self, Self::Neither)
     }
 
     /// Returns the negation of [`is_none`]
@@ -73,21 +77,9 @@ where
         }
     }
 
-    /// Converts the pair into a new pair. The types of the new pair need to implement a
-    /// converation `From` the old types. This consumes the old pair
-    pub fn convert<A, B>(self) -> OptionalPair<A, B>
-    where
-        A: Eq + From<L>,
-        B: Eq + From<R>,
-    {
-        self.map(|l| A::from(l), |r| B::from(r))
-    }
-
     /// Maps both inner values of a pair, consuming this pair.
     pub fn map<A, B, LF, RF>(self, left: LF, right: RF) -> OptionalPair<A, B>
     where
-        A: Eq,
-        B: Eq,
         LF: FnOnce(L) -> A,
         RF: FnOnce(R) -> B,
     {
@@ -100,11 +92,7 @@ where
     }
 
     /// Maps left inner value of a pair, consuming this pair.
-    pub fn map_left<A, F>(self, f: F) -> OptionalPair<A, R>
-    where
-        A: Eq,
-        F: FnOnce(L) -> A,
-    {
+    pub fn map_left<A, F: FnOnce(L) -> A>(self, f: F) -> OptionalPair<A, R> {
         match self {
             Neither => Neither,
             SomeRight(r) => SomeRight(r),
@@ -114,11 +102,7 @@ where
     }
 
     /// Maps right inner value of a pair, consuming this pair.
-    pub fn map_right<A, F>(self, f: F) -> OptionalPair<L, A>
-    where
-        A: Eq,
-        F: FnOnce(R) -> A,
-    {
+    pub fn map_right<A, F: FnOnce(R) -> A>(self, f: F) -> OptionalPair<L, A> {
         match self {
             Neither => Neither,
             SomeLeft(l) => SomeLeft(l),
@@ -128,29 +112,10 @@ where
     }
 }
 
-impl<L, R> OptionalPair<&L, &R>
-where
-    L: Eq + Clone,
-    R: Eq + Clone,
-{
+impl<L: Clone, R: Clone> OptionalPair<&L, &R> {
     /// Takes an `OptionalPair` that contains references to clonable values and returns an
     /// `OptionalPair` of clones of those values.
-    pub fn cloned(&self) -> OptionalPair<L, R> {
-        match self {
-            Neither => Neither,
-            SomeLeft(l) => SomeLeft((*l).clone()),
-            SomeRight(r) => SomeRight((*r).clone()),
-            SomeBoth(l, r) => SomeBoth((*l).clone(), (*r).clone()),
-        }
-    }
-}
-
-impl<L, R> Clone for OptionalPair<L, R>
-where
-    L: Eq + Clone,
-    R: Eq + Clone,
-{
-    fn clone(&self) -> Self {
+    pub fn cloned(self) -> OptionalPair<L, R> {
         match self {
             Neither => Neither,
             SomeLeft(l) => SomeLeft(l.clone()),
@@ -160,34 +125,18 @@ where
     }
 }
 
-impl<L, R> fmt::Debug for OptionalPair<L, R>
-where
-    L: fmt::Debug + Eq,
-    R: fmt::Debug + Eq,
-{
+impl<L: fmt::Debug, R: fmt::Debug> fmt::Debug for OptionalPair<L, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Neither => {
-                write!(f, "None")
-            }
-            SomeLeft(item) => {
-                write!(f, "SomeLeft( {item:?} )")
-            }
-            SomeRight(item) => {
-                write!(f, "SomeRight( {item:?} )")
-            }
-            SomeBoth(l_item, r_item) => {
-                write!(f, "SomeBoth( {l_item:?}, {r_item:?} )")
-            }
+            Neither => write!(f, "None"),
+            SomeLeft(item) => write!(f, "SomeLeft( {item:?} )"),
+            SomeRight(item) => write!(f, "SomeRight( {item:?} )"),
+            SomeBoth(l_item, r_item) => write!(f, "SomeBoth( {l_item:?}, {r_item:?} )"),
         }
     }
 }
 
-impl<L, R> From<(Option<L>, Option<R>)> for OptionalPair<L, R>
-where
-    L: Eq,
-    R: Eq,
-{
+impl<L, R> From<(Option<L>, Option<R>)> for OptionalPair<L, R> {
     fn from(input_pair: (Option<L>, Option<R>)) -> Self {
         match input_pair {
             (None, None) => Neither,
@@ -198,26 +147,7 @@ where
     }
 }
 
-impl<L, R> From<Option<(Option<L>, Option<R>)>> for OptionalPair<L, R>
-where
-    L: Eq,
-    R: Eq,
-{
-    fn from(input_pair: Option<(Option<L>, Option<R>)>) -> Self {
-        match input_pair {
-            None | Some((None, None)) => Neither,
-            Some((Some(item), None)) => SomeLeft(item),
-            Some((None, Some(item))) => SomeRight(item),
-            Some((Some(item_1), Some(item_2))) => SomeBoth(item_1, item_2),
-        }
-    }
-}
-
-impl<L, R> From<OptionalPair<L, R>> for (Option<L>, Option<R>)
-where
-    L: Eq,
-    R: Eq,
-{
+impl<L, R> From<OptionalPair<L, R>> for (Option<L>, Option<R>) {
     fn from(input_pair: OptionalPair<L, R>) -> Self {
         match input_pair {
             Neither => (None, None),
@@ -228,17 +158,21 @@ where
     }
 }
 
-impl<L, R> From<OptionalPair<L, R>> for Option<(Option<L>, Option<R>)>
-where
-    L: Eq,
-    R: Eq,
-{
-    fn from(input_pair: OptionalPair<L, R>) -> Self {
-        match input_pair {
-            Neither => None,
-            SomeLeft(item) => Some((Some(item), None)),
-            SomeRight(item) => Some((None, Some(item))),
-            SomeBoth(item_1, item_2) => Some((Some(item_1), Some(item_2))),
+impl<L: fmt::Debug, R: fmt::Debug> fmt::Debug for Either<L, R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Left(item) => write!(f, "Left({item:?})"),
+            Self::Right(item) => write!(f, "Right({item:?})"),
+        }
+    }
+}
+
+impl<L: fmt::Debug, R: fmt::Debug> fmt::Debug for EitherOrBoth<L, R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Left(item) => write!(f, "Left({item:?})"),
+            Self::Right(item) => write!(f, "Right({item:?})"),
+            Self::Both(left, right) => write!(f, "Both {{ left: {left:?}, right: {right:?} }}"),
         }
     }
 }

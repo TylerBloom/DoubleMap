@@ -4,9 +4,9 @@ use std::{
     fmt,
     hash::{BuildHasher, Hash},
     iter::FusedIterator,
+    marker::PhantomData,
+    vec,
 };
-
-use core::mem;
 
 use hashbrown::{hash_table, DefaultHashBuilder, HashTable, TryReserveError};
 
@@ -461,68 +461,72 @@ where
         if self.are_paired(l, r) {
             return Neither;
         }
-        let l_hash = make_hash::<L, S>(&self.hash_builder, l);
-        let r_hash = make_hash::<R, S>(&self.hash_builder, r);
+        let l_hash = make_hash(&self.hash_builder, l);
+        let r_hash = make_hash(&self.hash_builder, r);
         let opt_left = self.left_set.find_mut(l_hash, equivalent_key(l));
         let opt_right = self.right_set.find_mut(r_hash, equivalent_key(r));
-        match (opt_left, opt_right) {
-            (Some(left), Some(right)) => {
-                match (left.hash, right.hash) {
-                    (None, None) => {
-                        left.hash = Some(r_hash);
-                        right.hash = Some(l_hash);
-                        right.id = left.id;
-                        Neither
-                    }
-                    (Some(lp_hash), None) => {
-                        left.hash = Some(r_hash);
-                        right.hash = Some(l_hash);
-                        let old_id = left.id;
-                        // Here, we give the left item the new id to avoid a collision in the right set
-                        left.id = right.id;
-                        SomeRight(
-                            self.right_set
-                                .remove_entry(lp_hash, just_id(old_id))
-                                .unwrap()
-                                .extract(),
-                        )
-                    }
-                    (None, Some(rp_hash)) => {
-                        left.hash = Some(r_hash);
-                        right.hash = Some(l_hash);
-                        let old_id = right.id;
-                        // Here, we give the left item the new id to avoid a collision in the right set
-                        right.id = left.id;
-                        SomeLeft(
-                            self.left_set
-                                .remove_entry(rp_hash, hash_and_id(r_hash, old_id))
-                                .unwrap()
-                                .extract(),
-                        )
-                    }
-                    (Some(lp_hash), Some(rp_hash)) => {
-                        left.hash = Some(r_hash);
-                        right.hash = Some(l_hash);
-                        let old_l_id = left.id;
-                        let old_r_id = right.id;
-                        // Here, we give the pair a new id to avoid collisions in both sets
-                        left.id = self.counter;
-                        right.id = self.counter;
-                        self.counter += 1;
-                        SomeBoth(
-                            self.left_set
-                                .remove_entry(rp_hash, just_id(old_r_id))
-                                .unwrap()
-                                .extract(),
-                            self.right_set
-                                .remove_entry(lp_hash, just_id(old_l_id))
-                                .unwrap()
-                                .extract(),
-                        )
-                    }
-                }
+        let (Some(left), Some(right)) = (opt_left, opt_right) else {
+            // TODO: This should probably be an error rather than Neither because
+            return Neither;
+        };
+        match (left.hash, right.hash) {
+            (None, None) => {
+                left.hash = Some(r_hash);
+                right.hash = Some(l_hash);
+                right.id = left.id;
+                Neither
             }
-            _ => Neither,
+            (Some(lp_hash), None) => {
+                left.hash = Some(r_hash);
+                right.hash = Some(l_hash);
+                let old_id = left.id;
+                // Here, we give the left item the new id to avoid a collision in the right set
+                left.id = right.id;
+                let Ok(entry) = self
+                    .right_set
+                    .find_entry(lp_hash, hash_and_id(l_hash, old_id))
+                else {
+                    unreachable!("TODO");
+                };
+                SomeRight(entry.remove().0.value)
+            }
+            (None, Some(rp_hash)) => {
+                left.hash = Some(r_hash);
+                right.hash = Some(l_hash);
+                let old_id = right.id;
+                // Here, we give the left item the new id to avoid a collision in the right set
+                right.id = left.id;
+                let Ok(entry) = self
+                    .left_set
+                    .find_entry(rp_hash, hash_and_id(r_hash, old_id))
+                else {
+                    unreachable!("TODO")
+                };
+                SomeLeft(entry.remove().0.value)
+            }
+            (Some(lp_hash), Some(rp_hash)) => {
+                left.hash = Some(r_hash);
+                right.hash = Some(l_hash);
+                let old_l_id = left.id;
+                let old_r_id = right.id;
+                // Here, we give the pair a new id to avoid collisions in both sets
+                left.id = self.counter;
+                right.id = self.counter;
+                self.counter += 1;
+                let Ok(left_entry) = self
+                    .left_set
+                    .find_entry(rp_hash, hash_and_id(r_hash, old_r_id))
+                else {
+                    unreachable!("TODO")
+                };
+                let Ok(right_entry) = self
+                    .right_set
+                    .find_entry(lp_hash, hash_and_id(l_hash, old_l_id))
+                else {
+                    unreachable!("TODO");
+                };
+                SomeBoth(left_entry.remove().0.value, right_entry.remove().0.value)
+            }
         }
     }
 
@@ -668,12 +672,12 @@ where
     /// assert_eq!(map.remove(&1, &"1"), None);
     /// ```
     pub fn remove(&mut self, left: &L, right: &R) -> Option<(L, R)> {
-        if self.are_paired(left, right) {
-            Option::from(self.remove_via_left(left))
-                .map(|(opt_l, opt_r)| (opt_l.unwrap(), opt_r.unwrap()))
-        } else {
-            None
-        }
+        self.are_paired(left, right).then(|| {
+            let SomeBoth(left, right) = self.remove_via_left(left) else {
+                unreachable!("TODO");
+            };
+            (left, right)
+        })
     }
 
     /// Removes and returns the given item from the left set and unpairs its associated item if it
@@ -690,15 +694,20 @@ where
     /// assert!(map.contains_right(&"1"));
     /// ```
     pub fn remove_left(&mut self, item: &L) -> Option<L> {
-        let l_hash = make_hash::<L, S>(&self.hash_builder, item);
-        let item = self.left_set.remove_entry(l_hash, equivalent_key(item))?;
+        let l_hash = make_hash(&self.hash_builder, item);
+        let item = self
+            .left_set
+            .find_entry(l_hash, equivalent_key(item))
+            .ok()?
+            .remove()
+            .0;
         if let Some(hash) = item.hash {
             self.right_set
                 .find_mut(hash, just_id(item.id))
                 .unwrap()
                 .hash = None;
         }
-        Some(item.extract())
+        Some(item.value)
     }
 
     /// Removes and returns the given item from the left set and, if it exists, its associated item
@@ -719,23 +728,20 @@ where
     /// ```
     pub fn remove_via_left(&mut self, item: &L) -> OptionalPair<L, R> {
         let l_hash = make_hash::<L, S>(&self.hash_builder, item);
-        let left_pairing: MappingPair<L> =
-            if let Some(p) = self.left_set.remove_entry(l_hash, equivalent_key(item)) {
-                p
-            } else {
-                return Neither;
-            };
-        let right_value: Option<R> = if let Some(hash) = left_pairing.hash {
-            Some(
-                self.right_set
-                    .remove_entry(hash, hash_and_id(l_hash, left_pairing.id))
-                    .unwrap()
-                    .extract(),
-            )
-        } else {
-            None
+        let Ok(entry) = self.left_set.find_entry(l_hash, equivalent_key(item)) else {
+            return Neither;
         };
-        OptionalPair::from((Some(left_pairing.extract()), right_value))
+        let left_pairing = entry.remove().0;
+        let right_value = left_pairing.hash.map(|hash| {
+            let Ok(entry) = self
+                .right_set
+                .find_entry(hash, hash_and_id(l_hash, left_pairing.id))
+            else {
+                unreachable!("TODO")
+            };
+            entry.remove().0.value
+        });
+        OptionalPair::from((Some(left_pairing.value), right_value))
     }
 
     /// Removes and returns the given item from the left set and unpairs its associated item if it
@@ -752,12 +758,17 @@ where
     /// assert!(map.contains_left(&1));
     /// ```
     pub fn remove_right(&mut self, item: &R) -> Option<R> {
-        let r_hash = make_hash::<R, S>(&self.hash_builder, item);
-        let item = self.right_set.remove_entry(r_hash, equivalent_key(item))?;
+        let r_hash = make_hash(&self.hash_builder, item);
+        let item = self
+            .right_set
+            .find_entry(r_hash, equivalent_key(item))
+            .ok()?
+            .remove()
+            .0;
         if let Some(hash) = item.hash {
             self.left_set.find_mut(hash, just_id(item.id)).unwrap().hash = None;
         }
-        Some(item.extract())
+        Some(item.value)
     }
 
     /// Removes the given item from the right set and its associated item from the left set
@@ -777,41 +788,20 @@ where
     /// ```
     pub fn remove_via_right(&mut self, item: &R) -> OptionalPair<L, R> {
         let r_hash = make_hash::<R, S>(&self.hash_builder, item);
-        let right_pairing: MappingPair<R> =
-            if let Some(p) = self.right_set.remove_entry(r_hash, equivalent_key(item)) {
-                p
-            } else {
-                return Neither;
-            };
-        let left_value: Option<L> = if let Some(hash) = right_pairing.hash {
-            Some(
-                self.left_set
-                    .remove_entry(hash, hash_and_id(r_hash, right_pairing.id))
-                    .unwrap()
-                    .extract(),
-            )
-        } else {
-            None
+        let Ok(entry) = self.right_set.find_entry(r_hash, equivalent_key(item)) else {
+            return Neither;
         };
+        let right_pairing = entry.remove().0;
+        let left_value = right_pairing.hash.map(|hash| {
+            let Ok(entry) = self
+                .left_set
+                .find_entry(hash, hash_and_id(r_hash, right_pairing.id))
+            else {
+                unreachable!("TODO")
+            };
+            entry.remove().0.value
+        });
         OptionalPair::from((left_value, Some(right_pairing.extract())))
-    }
-
-    /// Removes a pair using the hash of the left item, right item, and their shared pairing id
-    fn remove_via_hashes_and_id(
-        &mut self,
-        l_hash: u64,
-        r_hash: u64,
-        id: u64,
-    ) -> OptionalPair<L, R> {
-        let left_opt = self
-            .left_set
-            .remove_entry(l_hash, hash_and_id(r_hash, id))
-            .map(|opt_l| opt_l.extract());
-        let right_opt = self
-            .right_set
-            .remove_entry(r_hash, hash_and_id(l_hash, id))
-            .map(|opt_r| opt_r.extract());
-        OptionalPair::from((left_opt, right_opt))
     }
 
     /// Swaps an item in the left set with another item, remaps the old item's associated right
@@ -843,15 +833,12 @@ where
     /// ```
     pub fn swap_left(&mut self, old: &L, new: L) -> OptionalPair<L, OptionalPair<L, R>> {
         // Check for Eq left item and remove that cycle if it exists
-        let new_l_hash = make_hash::<L, S>(&self.hash_builder, &new);
+        let new_l_hash = make_hash(&self.hash_builder, &new);
         let eq_opt = self.swap_left_eq_check(old, &new, new_l_hash);
         // Find the old left pairing
-        let old_l_hash = make_hash::<L, S>(&self.hash_builder, old);
-        let l_pairing: &MappingPair<L> = match self.left_set.find(old_l_hash, equivalent_key(old)) {
-            Some(p) => p,
-            None => {
-                return Neither;
-            }
+        let old_l_hash = make_hash(&self.hash_builder, old);
+        let Some(l_pairing) = self.left_set.find(old_l_hash, equivalent_key(old)) else {
+            return Neither;
         };
         if let Some(hash) = l_pairing.hash {
             // Use old left pairing to find right pairing
@@ -863,17 +850,16 @@ where
             r_pairing.hash = Some(new_l_hash);
         }
         // Create new left pairing
-        let new_left_pairing: MappingPair<L> = MappingPair {
+        let new_left_pairing = MappingPair {
             value: new,
             hash: l_pairing.hash,
             id: l_pairing.id,
         };
         // Remove old left pairing
-        let old_left_item: L = self
-            .left_set
-            .remove_entry(old_l_hash, equivalent_key(old))
-            .unwrap()
-            .extract();
+        let Ok(entry) = self.left_set.find_entry(old_l_hash, equivalent_key(old)) else {
+            unreachable!("TODO")
+        };
+        let old_left_item = entry.remove().0.value;
         // Insert new left pairing
         self.left_set.insert_unique(
             new_l_hash,
@@ -1002,20 +988,16 @@ where
     /// ```
     pub fn swap_right(&mut self, old: &R, new: R) -> OptionalPair<R, OptionalPair<L, R>> {
         // Check for Eq left item and remove that cycle if it exists
-        let new_r_hash = make_hash::<R, S>(&self.hash_builder, &new);
+        let new_r_hash = make_hash(&self.hash_builder, &new);
         let eq_opt = self.swap_right_eq_check(old, &new, new_r_hash);
         // Find the old right pairing
-        let old_r_hash = make_hash::<R, S>(&self.hash_builder, old);
-        let r_pairing: &MappingPair<R> = match self.right_set.find(old_r_hash, equivalent_key(old))
-        {
-            Some(p) => p,
-            None => {
-                return Neither;
-            }
+        let old_r_hash = make_hash(&self.hash_builder, old);
+        let Some(r_pairing) = self.right_set.find(old_r_hash, equivalent_key(old)) else {
+            return Neither;
         };
         if let Some(hash) = r_pairing.hash {
             // Use old right pairing to find the left pairing
-            let l_pairing: &mut MappingPair<L> = self
+            let l_pairing = self
                 .left_set
                 .find_mut(hash, hash_and_id(old_r_hash, r_pairing.id))
                 .unwrap();
@@ -1029,16 +1011,15 @@ where
             id: r_pairing.id,
         };
         // Remove old right pairing
-        let old_right_item: R = self
-            .right_set
-            .remove_entry(old_r_hash, equivalent_key(old))
-            .unwrap()
-            .extract();
+        let Ok(entry) = self.right_set.find_entry(old_r_hash, equivalent_key(old)) else {
+            unreachable!("TODO");
+        };
+        let old_right_item = entry.remove().0.value;
         // Insert new right pairing
         self.right_set.insert_unique(
             new_r_hash,
             new_right_pairing,
-            make_hasher::<MappingPair<R>, S>(&self.hash_builder),
+            make_hasher(&self.hash_builder),
         );
         // Return old right pairing
         if eq_opt.is_none() {
@@ -1195,19 +1176,6 @@ where
         }
     }
 
-    /// Removes a pair using the hash of the left item, right item, and their shared pairing id
-    fn get_via_hashes_and_id(&self, l_hash: u64, r_hash: u64, id: u64) -> Option<(&L, &R)> {
-        let left_pairing = self.left_set.find(l_hash, hash_and_id(r_hash, id))?;
-        let right_pairing = self.right_set.find(r_hash, hash_and_id(l_hash, id)).unwrap();
-        Some((&left_pairing.value, &right_pairing.value))
-    }
-
-    #[inline]
-    fn get_left_inner(&self, item: &L) -> Option<&MappingPair<L>> {
-        let hash = make_hash::<L, S>(&self.hash_builder, item);
-        self.left_set.find(hash, equivalent_key(item))
-    }
-
     #[inline]
     fn get_left_inner_with_hash<Q>(&self, item: &Q, hash: u64) -> Option<&MappingPair<L>>
     where
@@ -1215,12 +1183,6 @@ where
         Q: Hash + Eq + PartialEq<L>,
     {
         self.left_set.find(hash, equivalent_key(item))
-    }
-
-    #[inline]
-    fn get_right_inner(&self, item: &R) -> Option<&MappingPair<R>> {
-        let hash = make_hash::<R, S>(&self.hash_builder, item);
-        self.right_set.find(hash, equivalent_key(item))
     }
 
     #[inline]
@@ -1252,11 +1214,11 @@ where
     ///     }
     /// }
     /// ```
-    pub fn iter(&self) -> Iter<'_, L, R, S> {
-        Iter {
+    pub fn iter(&self) -> Iter<'_, L, R> {
+        Iter(IterInner::FirstHalf {
             left_iter: self.left_set.iter(),
-            map_ref: self,
-        }
+            map_ref: &self.right_set,
+        })
     }
 
     /// Returns an iterator over the pairs in the map
@@ -1271,11 +1233,10 @@ where
     ///     println!("left: {left}, right: {right}");
     /// }
     /// ```
-    pub fn iter_paired(&self) -> PairedIter<'_, L, R, S> {
+    pub fn iter_paired(&self) -> PairedIter<'_, L, R> {
         PairedIter {
             left_iter: self.left_set.iter(),
-            right_iter:self.right_set.iter(),
-            map_ref: self,
+            map_ref: &self.right_set,
         }
     }
 
@@ -1298,11 +1259,10 @@ where
     ///     }
     /// }
     /// ```
-    pub fn iter_unpaired(&self) -> UnpairedIter<'_, L, R, S> {
+    pub fn iter_unpaired(&self) -> UnpairedIter<'_, L, R> {
         UnpairedIter {
             left_iter: self.left_set.iter(),
             right_iter: self.right_set.iter(),
-            map_ref: self,
         }
     }
 
@@ -1342,6 +1302,10 @@ where
         }
     }
 
+    // TODO: These are being temporary removed until the cursor API for HashTable is stablized.
+    // The drain API had a clear bug in it and there was almost certainly a bug in the drain filter
+    // iterator. These could be re-worked to function similarly to the `drain` method by buffering
+    // everything before yielding them. I *strongly*
     /// Clears the map, returning all items as an iterator while keeping the backing memory
     /// allocated for reuse. If the returned iterator is dropped before being fully consumed, it
     /// drops the remaining pairs.
@@ -1369,10 +1333,22 @@ where
     /// assert_eq!(map.capacity_left(), cap);
     /// ```
     pub fn drain(&mut self) -> DrainIter<'_, L, R> {
-        DrainIter {
-            left_iter: self.left_set.drain(),
-            right_ref: &mut self.right_set,
-        }
+        let mut values = Vec::with_capacity(self.left_set.len());
+        values.extend(self.left_set.drain().map(|left| {
+            match left
+                .hash
+                .and_then(|hash| self.right_set.find_entry(hash, just_id(left.id)).ok())
+            {
+                Some(entry) => EitherOrBoth::Both(left.value, entry.remove().0.value),
+                None => EitherOrBoth::Left(left.value),
+            }
+        }));
+        values.extend(
+            self.right_set
+                .drain()
+                .map(|item| EitherOrBoth::Right(item.value)),
+        );
+        DrainIter(values.into_iter(), PhantomData)
     }
 
     /// Returns an iterator that removes and yields all items that evaluate to `true` in the given
@@ -1403,20 +1379,75 @@ where
     ///
     /// assert_eq!(map.len_left(), 50);
     /// ```
-    pub fn drain_filter<F>(&mut self, f: F) -> DrainFilterIter<'_, L, R, F>
+    pub fn extract_if<F>(&mut self, mut f: F) -> ExtractIfIter<'_, L, R, F>
     where
-        F: FnMut(OptionalPair<&L, &R>) -> bool,
+        F: FnMut(EitherOrBoth<&L, &R>) -> bool,
     {
-        DrainFilterIter {
-            f,
-            inner: DrainFilterInner {
-                left_iter: self.left_set.iter(),
-                right_iter: self.right_set.iter(),
-                left_ref: &mut self.left_set,
-                right_ref: &mut self.right_set,
-                reset_right_iter: true,
-            },
+        let mut values = Vec::with_capacity(self.left_set.len());
+        for left in self.left_set.iter() {
+            match left
+                .hash
+                .and_then(|hash| self.right_set.find_entry(hash, just_id(left.id)).ok())
+            {
+                Some(entry) => {
+                    if f(EitherOrBoth::Both(&left.value, &entry.get().value)) {
+                        values.push((
+                            left.id,
+                            EitherOrBoth::Both(
+                                make_hash(&self.hash_builder, &left.value),
+                                make_hash(&self.hash_builder, &entry.get().value),
+                            ),
+                        ));
+                    }
+                }
+                None => {
+                    if f(EitherOrBoth::Left(&left.value)) {
+                        values.push((
+                            left.id,
+                            EitherOrBoth::Left(make_hash(&self.hash_builder, &left.value)),
+                        ));
+                    }
+                }
+            };
         }
+        for item in self.right_set.iter().filter(|item| item.hash.is_none()) {
+            if f(EitherOrBoth::Right(&item.value)) {
+                values.push((
+                    item.id,
+                    EitherOrBoth::Right(make_hash(&self.hash_builder, &item.value)),
+                ));
+            }
+        }
+        let mut to_drop = Vec::with_capacity(values.len());
+        for (id, pair) in values {
+            match pair {
+                EitherOrBoth::Left(left) => {
+                    let Ok(entry) = self.left_set.find_entry(left, just_id(id)) else {
+                        unreachable!("TODO");
+                    };
+                    to_drop.push(EitherOrBoth::Left(entry.remove().0.value));
+                }
+                EitherOrBoth::Right(right) => {
+                    let Ok(entry) = self.right_set.find_entry(right, just_id(id)) else {
+                        unreachable!("TODO");
+                    };
+                    to_drop.push(EitherOrBoth::Right(entry.remove().0.value));
+                }
+                EitherOrBoth::Both(left, right) => {
+                    let Ok(left) = self.left_set.find_entry(left, just_id(id)) else {
+                        unreachable!("TODO");
+                    };
+                    let Ok(right) = self.right_set.find_entry(right, just_id(id)) else {
+                        unreachable!("TODO");
+                    };
+                    to_drop.push(EitherOrBoth::Both(
+                        left.remove().0.value,
+                        right.remove().0.value,
+                    ));
+                }
+            }
+        }
+        ExtractIfIter(to_drop.into_iter(), PhantomData)
     }
 
     /// Drops all pairs that cause the given closure to return `false`. Pairs are visited in an
@@ -1434,41 +1465,11 @@ where
     ///
     /// assert_eq!(map.len_left(), 50);
     /// ```
-    pub fn retain<F>(&mut self, mut f: F)
+    pub fn retain<F>(&mut self, f: F)
     where
-        F: FnMut(&OptionalPair<&L, &R>) -> bool,
+        F: FnMut(EitherOrBoth<&L, &R>) -> bool,
     {
-        let mut to_drop: Vec<(Option<u64>, Option<u64>, u64)> =
-            Vec::with_capacity(self.left_set.len());
-        for op in self.iter() {
-            if f(&op) {
-                let (left, right): (Option<&L>, Option<&R>) = op.into();
-                let l_hash = left.map(|l| make_hash::<L, S>(&self.hash_builder, l));
-                let r_hash = right.map(|r| make_hash::<R, S>(&self.hash_builder, r));
-                let id = if let Some(l) = left {
-                    self.get_left_inner(l).unwrap().id
-                } else {
-                    self.get_right_inner(right.unwrap()).unwrap().id
-                };
-                to_drop.push((l_hash, r_hash, id));
-            }
-        }
-        for tup in to_drop {
-            match tup {
-                (Some(l), Some(r), id) => {
-                    self.remove_via_hashes_and_id(l, r, id);
-                }
-                (Some(l), None, id) => {
-                    self.left_set.remove_entry(l, |p| p.id == id);
-                }
-                (None, Some(r), id) => {
-                    self.right_set.remove_entry(r, |p| p.id == id);
-                }
-                _ => {
-                    unreachable!("There is either some left or some right hash.");
-                }
-            }
-        }
+        self.extract_if(f).for_each(drop);
     }
 
     /// Drops all pairs that cause the predicate to return `false` while keeping the backing memory
@@ -1490,18 +1491,20 @@ where
     where
         F: FnMut(&L, &R) -> bool,
     {
-        let mut to_drop: Vec<(u64, u64, u64)> = Vec::with_capacity(self.left_set.len());
-        for (left, right) in self.iter_paired() {
-            if f(left, right) {
-                let l_hash = make_hash::<L, S>(&self.hash_builder, left);
-                let r_hash = make_hash::<R, S>(&self.hash_builder, right);
-                let id = self.get_left_inner(left).unwrap().id;
-                to_drop.push((l_hash, r_hash, id));
+        self.left_set.retain(|left| {
+            if let Some(hash) = left.hash {
+                let Ok(entry) = self.right_set.find_entry(hash, just_id(left.id)) else {
+                    todo!()
+                };
+                let do_remove = f(&left.value, &entry.get().value);
+                if do_remove {
+                    entry.remove();
+                }
+                do_remove
+            } else {
+                false
             }
-        }
-        for (l_hash, r_hash, id) in to_drop {
-            self.remove_via_hashes_and_id(l_hash, r_hash, id);
-        }
+        })
     }
 
     /// Drops all unpaired items that cause the predicate to return `false` while keeping the
@@ -1521,42 +1524,12 @@ where
     /// ```
     pub fn retain_unpaired<F>(&mut self, mut f: F)
     where
-        F: FnMut(&OptionalPair<&L, &R>) -> bool,
+        F: FnMut(Either<&L, &R>) -> bool,
     {
-        let mut to_drop: Vec<(Option<u64>, Option<u64>, u64)> =
-            Vec::with_capacity(self.left_set.len());
-        for op in self.iter_unpaired() {
-            if f(&op) {
-                match op {
-                    SomeLeft(left) => {
-                        let l_hash = make_hash::<L, S>(&self.hash_builder, left);
-                        let id = self.get_left_inner_with_hash(left, l_hash).unwrap().id;
-                        to_drop.push((Some(l_hash), None, id));
-                    }
-                    SomeRight(right) => {
-                        let r_hash = make_hash::<R, S>(&self.hash_builder, right);
-                        let id = self.get_right_inner_with_hash(right, r_hash).unwrap().id;
-                        to_drop.push((None, Some(r_hash), id));
-                    }
-                    _ => {
-                        unreachable!("We are only iterating over unpaired items.");
-                    }
-                }
-            }
-        }
-        for tup in to_drop {
-            match tup {
-                (Some(l), None, id) => {
-                    self.left_set.remove_entry(l, |p| p.id == id);
-                }
-                (None, Some(r), id) => {
-                    self.right_set.remove_entry(r, |p| p.id == id);
-                }
-                _ => {
-                    unreachable!("We are only iterating over unpaired items.");
-                }
-            }
-        }
+        self.left_set
+            .retain(|item| item.hash.is_none() && f(Either::Left(&item.value)));
+        self.right_set
+            .retain(|item| item.hash.is_none() && f(Either::Right(&item.value)));
     }
 
     /// Shrinks the capacity of the left set with a lower limit. It will drop down no lower than the
@@ -1751,12 +1724,9 @@ where
             return false;
         }
         self.iter().all(|op| match op {
-            SomeLeft(l) => other.get_right(l).is_none(),
-            SomeRight(r) => other.get_left(r).is_none(),
-            SomeBoth(l, r) => other.are_paired(l, r),
-            _ => {
-                unreachable!("There has to be at least one item.")
-            }
+            EitherOrBoth::Left(l) => other.get_right(l).is_none(),
+            EitherOrBoth::Right(r) => other.get_left(r).is_none(),
+            EitherOrBoth::Both(l, r) => other.are_paired(l, r),
         })
     }
 }
@@ -1989,125 +1959,148 @@ where
 }
 
 /// An iterator over the entry items of a `PartialCycleMap`.
-pub struct Iter<'a, L, R, S> {
-    left_iter: hash_table::Iter<'a, MappingPair<L>>,
-    map_ref: &'a PartialCycleMap<L, R, S>,
+pub struct Iter<'a, L, R>(IterInner<'a, L, R>);
+
+enum IterInner<'a, L, R> {
+    FirstHalf {
+        left_iter: hash_table::Iter<'a, MappingPair<L>>,
+        map_ref: &'a HashTable<MappingPair<R>>,
+    },
+    Rest {
+        right_iter: hash_table::Iter<'a, MappingPair<R>>,
+    },
 }
 
-impl<L, R, S> Clone for Iter<'_, L, R, S> {
+impl<L, R> Clone for Iter<'_, L, R> {
     fn clone(&self) -> Self {
-        Self {
-            left_iter: self.left_iter.clone(),
-            map_ref: self.map_ref,
+        Self(self.0.clone())
+    }
+}
+
+impl<L, R> Clone for IterInner<'_, L, R> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::FirstHalf { left_iter, map_ref } => Self::FirstHalf {
+                left_iter: left_iter.clone(),
+                map_ref,
+            },
+            Self::Rest { right_iter } => Self::Rest {
+                right_iter: right_iter.clone(),
+            },
         }
     }
 }
 
-impl<L, R, S> fmt::Debug for Iter<'_, L, R, S>
+impl<L, R> fmt::Debug for Iter<'_, L, R>
 where
     L: Hash + Eq + fmt::Debug,
     R: Hash + Eq + fmt::Debug,
-    S: BuildHasher,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.clone()).finish()
+        f.debug_list().entries(Self::clone(self)).finish()
     }
 }
 
-impl<'a, L, R, S> Iterator for Iter<'a, L, R, S>
+impl<'a, L, R> Iterator for Iter<'a, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
-    type Item = OptionalPair<&'a L, &'a R>;
+    type Item = EitherOrBoth<&'a L, &'a R>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.left_iter.next() {
-            Some(l) => unsafe {
-                let left = &l.as_ref().value;
-                let right = self.map_ref.get_right(left);
-                Some(OptionalPair::from((Some(left), right)))
-            },
-            None => None,
+        match &mut self.0 {
+            IterInner::FirstHalf { left_iter, map_ref } => {
+                let Some(left_item) = left_iter.next() else {
+                    self.0 = IterInner::Rest {
+                        right_iter: map_ref.iter(),
+                    };
+                    return self.next();
+                };
+                let opt_right = left_item
+                    .hash
+                    .map(|hash| &map_ref.find(hash, just_id(left_item.id)).unwrap().value);
+                let digest = match opt_right {
+                    Some(right) => EitherOrBoth::Both(&left_item.value, right),
+                    None => EitherOrBoth::Left(&left_item.value),
+                };
+                Some(digest)
+            }
+            IterInner::Rest { right_iter } => {
+                // NOTE: This could be expressed as a filter, but that adds an extra generic, so
+                // this will suffice.
+                loop {
+                    let item = right_iter.next()?;
+                    if item.hash.is_none() {
+                        return Some(EitherOrBoth::Right(&item.value));
+                    }
+                }
+            }
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.left_iter.size_hint()
+        (0, None)
     }
 }
 
-impl<'a, L, R, S> ExactSizeIterator for Iter<'a, L, R, S>
+impl<L, R> ExactSizeIterator for Iter<'_, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
     fn len(&self) -> usize {
         self.clone().count()
     }
 }
 
-impl<L, R, S> FusedIterator for Iter<'_, L, R, S>
+impl<L, R> FusedIterator for Iter<'_, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
 }
 
-/// An iterator over the entry pairs of a `PartialCycleMap`.
-pub struct PairedIter<'a, L, R, S> {
+/// An iterator over the paired entry of a `PartialCycleMap`.
+pub struct PairedIter<'a, L, R> {
     left_iter: hash_table::Iter<'a, MappingPair<L>>,
-    right_iter: hash_table::Iter<'a, MappingPair<R>>,
-    map_ref: &'a PartialCycleMap<L, R, S>,
+    map_ref: &'a HashTable<MappingPair<R>>,
 }
 
-impl<L, R, S> Clone for PairedIter<'_, L, R, S> {
+impl<L, R> Clone for PairedIter<'_, L, R> {
     fn clone(&self) -> Self {
         Self {
             left_iter: self.left_iter.clone(),
-            right_iter: self.right_iter.clone(),
             map_ref: self.map_ref,
         }
     }
 }
 
-impl<L, R, S> fmt::Debug for PairedIter<'_, L, R, S>
+impl<L, R> fmt::Debug for PairedIter<'_, L, R>
 where
     L: Hash + Eq + fmt::Debug,
     R: Hash + Eq + fmt::Debug,
-    S: BuildHasher,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.clone()).finish()
     }
 }
 
-impl<'a, L, R, S> Iterator for PairedIter<'a, L, R, S>
+impl<'a, L, R> Iterator for PairedIter<'a, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
     type Item = (&'a L, &'a R);
 
     fn next(&mut self) -> Option<Self::Item> {
-        for l_pairing in self.left_iter.by_ref() {
-            // Ignore all unpaired items
-            let l = unsafe { l_pairing.as_ref() };
-            if l.hash.is_none() {
-                continue;
+        loop {
+            let left_item = self.left_iter.next()?;
+            if let Some(hash) = left_item.hash {
+                let right_item = self.map_ref.find(hash, just_id(left_item.id)).unwrap();
+                return Some((&left_item.value, &right_item.value));
             }
-            let left = &l.value;
-            let l_hash = make_hash(self.map_ref.hasher(), left);
-            let id = l.id;
-            return self
-                .map_ref
-                .get_via_hashes_and_id(l_hash, l.hash.unwrap(), id);
         }
-        None
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -2115,77 +2108,69 @@ where
     }
 }
 
-impl<'a, L, R, S> ExactSizeIterator for PairedIter<'a, L, R, S>
+impl<L, R> ExactSizeIterator for PairedIter<'_, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
     fn len(&self) -> usize {
         self.clone().count()
     }
 }
 
-impl<L, R, S> FusedIterator for PairedIter<'_, L, R, S>
+impl<L, R> FusedIterator for PairedIter<'_, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
 }
 
 /// An iterator over the entry pairs of a `PartialCycleMap`.
-pub struct UnpairedIter<'a, L, R, S> {
+pub struct UnpairedIter<'a, L, R> {
     left_iter: hash_table::Iter<'a, MappingPair<L>>,
     right_iter: hash_table::Iter<'a, MappingPair<R>>,
-    map_ref: &'a PartialCycleMap<L, R, S>,
 }
 
-impl<L, R, S> Clone for UnpairedIter<'_, L, R, S> {
+impl<L, R> Clone for UnpairedIter<'_, L, R> {
     fn clone(&self) -> Self {
         Self {
             left_iter: self.left_iter.clone(),
             right_iter: self.right_iter.clone(),
-            map_ref: self.map_ref,
         }
     }
 }
 
-impl<L, R, S> fmt::Debug for UnpairedIter<'_, L, R, S>
+impl<L, R> fmt::Debug for UnpairedIter<'_, L, R>
 where
     L: Hash + Eq + fmt::Debug,
     R: Hash + Eq + fmt::Debug,
-    S: BuildHasher,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.clone()).finish()
     }
 }
 
-impl<'a, L, R, S> Iterator for UnpairedIter<'a, L, R, S>
+impl<'a, L, R> Iterator for UnpairedIter<'a, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
-    type Item = OptionalPair<&'a L, &'a R>;
+    type Item = Either<&'a L, &'a R>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        for l_pairing in self.left_iter.by_ref() {
-            let l = unsafe { l_pairing.as_ref() };
+        for left_item in self.left_iter.by_ref() {
             // Ignore all paired items
-            if l.hash.is_some() {
+            if left_item.hash.is_some() {
                 continue;
             }
-            return Some(SomeLeft(&l.value));
+            return Some(Either::Left(&left_item.value));
         }
-        for r_pairing in self.right_iter.by_ref() {
-            let r = unsafe { r_pairing.as_ref() };
+        for right_item in self.right_iter.by_ref() {
             // Ignore all paired items
-            if r.hash.is_some() {
+            if right_item.hash.is_some() {
                 continue;
             }
-            return Some(SomeRight(&r.value));
+            return Some(Either::Right(&right_item.value));
         }
         None
     }
@@ -2195,22 +2180,20 @@ where
     }
 }
 
-impl<'a, L, R, S> ExactSizeIterator for UnpairedIter<'a, L, R, S>
+impl<L, R> ExactSizeIterator for UnpairedIter<'_, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
     fn len(&self) -> usize {
         self.clone().count()
     }
 }
 
-impl<L, R, S> FusedIterator for UnpairedIter<'_, L, R, S>
+impl<L, R> FusedIterator for UnpairedIter<'_, L, R>
 where
     L: Hash + Eq,
     R: Hash + Eq,
-    S: BuildHasher,
 {
 }
 
@@ -2243,13 +2226,7 @@ where
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.iter.next() {
-            Some(item) => {
-                let val = unsafe { &item.as_ref().value };
-                Some(val)
-            }
-            None => None,
-        }
+        self.iter.next().map(|item| &item.value)
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
@@ -2267,183 +2244,34 @@ where
 
 impl<T> FusedIterator for SingleIter<'_, T> where T: Hash + Eq {}
 
-/// An iterator over the entry pairs of a `PartialCycleMap`.
+// NOTE: The lifetime is not currently needed because we buffer all changes, but, when the cursor
+// API is stablized, the changes will not be buffered and we will need the lifetime. This prevents
+// a (minor) breaking change.
+/// An iterator that removes all items and pairs of items from the backing `PartialCycleMap` and
+/// yeilds them.
 #[allow(missing_debug_implementations)]
-pub struct DrainIter<'a, L, R>
-where
-    L: Eq + Hash,
-    R: Eq + Hash,
-{
-    left_iter: hash_table::Drain<'a, MappingPair<L>>,
-    right_ref: &'a mut HashTable<MappingPair<R>>,
-}
+pub struct DrainIter<'a, L, R>(vec::IntoIter<EitherOrBoth<L, R>>, PhantomData<&'a ()>);
 
-impl<'a, L, R> Drop for DrainIter<'a, L, R>
-where
-    L: Eq + Hash,
-    R: Eq + Hash,
-{
-    fn drop(&mut self) {
-        while let Some(item) = self.next() {
-            let guard = ConsumeAllOnDrop(self);
-            drop(item);
-            mem::forget(guard);
-        }
-    }
-}
-
-pub(super) struct ConsumeAllOnDrop<'a, T: Iterator>(pub(super) &'a mut T);
-
-impl<T: Iterator> Drop for ConsumeAllOnDrop<'_, T> {
-    fn drop(&mut self) {
-        self.0.for_each(drop)
-    }
-}
-
-impl<'a, L, R> Iterator for DrainIter<'a, L, R>
-where
-    L: Hash + Eq,
-    R: Hash + Eq,
-{
-    type Item = OptionalPair<L, R>;
+impl<L, R> Iterator for DrainIter<'_, L, R> {
+    type Item = EitherOrBoth<L, R>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.left_iter.next() {
-            // Not done with the left set yet
-            Some(left) => match left.hash {
-                Some(hash) => {
-                    let right = self
-                        .right_ref
-                        .remove_entry(hash, just_id(left.id))
-                        .unwrap()
-                        .extract();
-                    Some(SomeBoth(left.extract(), right))
-                }
-                None => Some(SomeLeft(left.extract())),
-            },
-            None => self
-                .right_ref
-                .drain()
-                .next()
-                .map(|right| SomeRight(right.extract())),
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.left_iter.size_hint()
+        self.0.next()
     }
 }
 
-impl<L, R> ExactSizeIterator for DrainIter<'_, L, R>
-where
-    L: Hash + Eq,
-    R: Hash + Eq,
-{
-    fn len(&self) -> usize {
-        self.left_iter.len()
-    }
-}
-
-impl<L, R> FusedIterator for DrainIter<'_, L, R>
-where
-    L: Hash + Eq,
-    R: Hash + Eq,
-{
-}
-
-/// A draining iterator over entries of a `CycleMap` which satisfy the predicate `f`.
+// NOTE: The lifetime and `F` (predicate) is not currently needed because we buffer all changes, but, when the cursor
+// API is stablized, the changes will not be buffered and we will need the lifetime. This prevents
+// a (minor) breaking change.
+/// An iterator similar to [`DrainIter`] but that applies a filter to what is removed.
 #[allow(missing_debug_implementations)]
-pub struct DrainFilterIter<'a, L, R, F>
-where
-    L: Eq,
-    R: Eq,
-    F: FnMut(OptionalPair<&L, &R>) -> bool,
-{
-    f: F,
-    inner: DrainFilterInner<'a, L, R>,
-}
+pub struct ExtractIfIter<'a, L, R, F>(vec::IntoIter<EitherOrBoth<L, R>>, PhantomData<&'a F>);
 
-impl<'a, L, R, F> Drop for DrainFilterIter<'a, L, R, F>
-where
-    L: Eq,
-    R: Eq,
-    F: FnMut(OptionalPair<&L, &R>) -> bool,
-{
-    fn drop(&mut self) {
-        while let Some(item) = self.next() {
-            let guard = ConsumeAllOnDrop(self);
-            drop(item);
-            mem::forget(guard);
-        }
-    }
-}
-
-impl<L: Eq, R: Eq, F> Iterator for DrainFilterIter<'_, L, R, F>
-where
-    F: FnMut(OptionalPair<&L, &R>) -> bool,
-{
-    type Item = OptionalPair<L, R>;
+impl<L, R, F> Iterator for ExtractIfIter<'_, L, R, F> {
+    type Item = EitherOrBoth<L, R>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next(&mut self.f)
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, self.inner.left_iter.size_hint().1)
-    }
-}
-
-impl<L: Eq, R: Eq, F> FusedIterator for DrainFilterIter<'_, L, R, F> where
-    F: FnMut(OptionalPair<&L, &R>) -> bool
-{
-}
-
-/// Portions of `DrainFilter` shared with `set::DrainFilter`
-pub(super) struct DrainFilterInner<'a, L, R> {
-    pub(super) left_iter: hash_table::Iter<'a, MappingPair<L>>,
-    pub(super) right_iter: hash_table::Iter<'a, MappingPair<R>>,
-    pub(super) left_ref: &'a mut HashTable<MappingPair<L>>,
-    pub(super) right_ref: &'a mut HashTable<MappingPair<R>>,
-    pub(super) reset_right_iter: bool,
-}
-
-impl<L: Eq, R: Eq> DrainFilterInner<'_, L, R> {
-    pub(super) fn next<F>(&mut self, f: &mut F) -> Option<OptionalPair<L, R>>
-    where
-        F: FnMut(OptionalPair<&L, &R>) -> bool,
-    {
-        for left in self.left_iter.by_ref() {
-            let l_pairing = unsafe { left.as_ref() };
-            match l_pairing.hash {
-                Some(hash) => {
-                    let right = self.right_ref.find(hash, just_id(l_pairing.id)).unwrap();
-                    if unsafe { f(SomeBoth(&l_pairing.value, &right.as_ref().value)) } {
-                        let l = unsafe { self.left_ref.remove(left).extract() };
-                        let r = unsafe { self.right_ref.remove(right).extract() };
-                        return Some(SomeBoth(l, r));
-                    }
-                }
-                None => {
-                    if f(SomeLeft(&l_pairing.value)) {
-                        let l = unsafe { self.left_ref.remove(left).extract() };
-                        return Some(SomeLeft(l));
-                    }
-                }
-            }
-        }
-        if self.reset_right_iter {
-            self.right_iter = unsafe { self.right_ref.iter() };
-            self.reset_right_iter = false;
-        }
-        for right in self.right_iter.by_ref() {
-            let r_pairing = unsafe { right.as_ref() };
-            if f(SomeRight(&r_pairing.value)) {
-                let r = unsafe { self.right_ref.remove(right).extract() };
-                return Some(SomeRight(r));
-            }
-        }
-        None
+        self.0.next()
     }
 }
 

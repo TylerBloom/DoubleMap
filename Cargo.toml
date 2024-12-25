@@ -15,6 +15,7 @@ categories = ["data-structures"]
 
 
 [dependencies]
+derive_more = { version = "1.0.0", features = ["is_variant"] }
 hashbrown = { version = "0.15.0" }
 serde = { version = "1.0", features = ["derive"], optional = true }
 
