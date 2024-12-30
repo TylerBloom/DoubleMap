@@ -35,7 +35,7 @@ mod tests {
     }
 
     #[test]
-    fn construction_test() {
+    fn partial_cycle_map_construction_test() {
         let map: PartialCycleMap<String, TestingStruct> = PartialCycleMap::new();
         assert_eq!(map.len_left(), 0);
         assert_eq!(map.len_right(), 0);
@@ -55,14 +55,14 @@ mod tests {
     }
 
     #[test]
-    fn unpaired_construction_test() {
+    fn partial_cycle_map_unpaired_construction_test() {
         let map = construct_unpaired_map();
         assert_eq!(map.len_left(), 10);
         assert_eq!(map.len_right(), 10);
     }
 
     #[test]
-    fn insert_test() {
+    fn partial_cycle_map_insert_test() {
         let mut map: PartialCycleMap<u64, String> = PartialCycleMap::with_capacity(100);
         for i in 0..100 {
             let opt = map.insert(i, i.to_string());
@@ -78,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn get_tests() {
+    fn partial_cycle_map_get_tests() {
         let map: PartialCycleMap<String, TestingStruct> = construct_default_map();
         assert!(map.contains_left(&0.to_string()));
         assert!(map.contains_right(&TestingStruct::from_value(0)));
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_tests() {
+    fn partial_cycle_map_remove_tests() {
         // Double remove
         let mut map: PartialCycleMap<String, TestingStruct> = construct_default_map();
         let opt = map.remove(&"42".to_string(), &TestingStruct::from_value(42));
@@ -115,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_left_not_found_test() {
+    fn partial_cycle_map_swap_left_not_found_test() {
         // Not Found
         let mut map = construct_default_map();
         let opt = map.swap_left(&"101".to_string(), "102".to_string());
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_left_checked_test() {
+    fn partial_cycle_map_swap_left_checked_test() {
         let mut map = construct_default_map();
         let opt = map.swap_left_checked(
             &"0".to_string(),
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_left_or_insert_tests() {
+    fn partial_cycle_map_swap_left_or_insert_tests() {
         let mut map = construct_default_map();
         let opt = map.swap_left_or_insert(
             &"0".to_string(),
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_not_found_test() {
+    fn partial_cycle_map_swap_right_not_found_test() {
         // Not Found
         let mut map = construct_default_map();
         let opt = map.swap_right(
@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_checked_test() {
+    fn partial_cycle_map_swap_right_checked_test() {
         let mut map = construct_default_map();
         let opt = map.swap_right_checked(
             &TestingStruct::from_value(1),
@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_or_insert_tests() {
+    fn partial_cycle_map_swap_right_or_insert_tests() {
         let mut map = construct_default_map();
         let opt = map.swap_right_or_insert(
             &TestingStruct::from_value(0),
@@ -244,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_test() {
+    fn partial_cycle_map_retain_test() {
         let mut map: PartialCycleMap<u64, String> = PartialCycleMap::with_capacity(100);
         for i in 0..100 {
             if i < 34 {
@@ -272,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_paired_test() {
+    fn partial_cycle_map_retain_paired_test() {
         let mut map: PartialCycleMap<u64, String> = PartialCycleMap::with_capacity(100);
         for i in 0..100 {
             if i < 34 {
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_unpaired_test() {
+    fn partial_cycle_map_retain_unpaired_test() {
         let mut map = PartialCycleMap::with_capacity(100);
         for i in 0..100 {
             if i < 34 {
@@ -328,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn iter_tests() {
+    fn partial_cycle_map_iter_tests() {
         // Main iter
         let map = construct_default_map();
         let iter = map.iter();
@@ -365,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn paired_iter_tests() {
+    fn partial_cycle_map_paired_iter_tests() {
         // paired iter
         let map = construct_default_map();
         let iter = map.iter_paired();
@@ -390,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn unpaired_iter_tests() {
+    fn partial_cycle_map_unpaired_iter_tests() {
         // Unpaired iter
         let map = construct_unpaired_map();
         let iter = map.iter_unpaired();
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn pairing_tests() {
+    fn partial_cycle_map_pairing_tests() {
         let mut map = construct_unpaired_map();
         for i in 0..5 {
             assert!(map.pair(&i.to_string(), &TestingStruct::from_value(i)));
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn unpair_tests() {
+    fn partial_cycle_map_unpair_tests() {
         let mut map = construct_unpaired_map();
         for i in 0..5 {
             assert!(map.pair(&i.to_string(), &TestingStruct::from_value(i)));
@@ -455,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_left_tests() {
+    fn partial_cycle_map_remove_left_tests() {
         let mut map = construct_unpaired_map();
         for i in 0..5 {
             assert!(map.pair(&i.to_string(), &TestingStruct::from_value(i)));
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_right_tests() {
+    fn partial_cycle_map_remove_right_tests() {
         let mut map = construct_unpaired_map();
         for i in 0..5 {
             assert!(map.pair(&i.to_string(), &TestingStruct::from_value(i)));
@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn forced_pairing_tests() {
+    fn partial_cycle_map_forced_pairing_tests() {
         let mut map = construct_unpaired_map();
         for i in 0..5 {
             assert_eq!(
@@ -542,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn forced_removed_pairing_tests() {
+    fn partial_cycle_map_forced_removed_pairing_tests() {
         let mut map = construct_unpaired_map();
         for i in 0..5 {
             assert_eq!(
@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn drain_tests() {
+    fn partial_cycle_map_drain_tests() {
         let mut map = construct_unpaired_map();
         let l_cap = map.capacity_left();
         let r_cap = map.capacity_right();
@@ -647,13 +647,13 @@ mod tests {
     }
 
     #[test]
-    fn misc_tests() {
+    fn partial_cycle_map_misc_tests() {
         let map = construct_default_map();
         assert!(!map.are_paired(&"0".to_string(), &TestingStruct::from_value(1)));
     }
 
     #[test]
-    fn shrink_tests() {
+    fn partial_cycle_map_shrink_tests() {
         let mut map: PartialCycleMap<i32, i32> = PartialCycleMap::with_capacity(100);
         let cap = (map.capacity_left(), map.capacity_right());
         map.insert(1, 2);
@@ -696,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn reserve_tests() {
+    fn partial_cycle_map_reserve_tests() {
         let mut map: PartialCycleMap<&str, i32> = PartialCycleMap::new();
         let old_cap = (map.capacity_left(), map.capacity_right());
         assert_eq!(old_cap.0, 0);
@@ -720,14 +720,14 @@ mod tests {
     }
 
     #[test]
-    fn eq_test() {
+    fn partial_cycle_map_eq_test() {
         let map = construct_default_map();
         assert_eq!(map.clone(), construct_default_map());
         assert_eq!(construct_default_map(), construct_default_map());
     }
 
     #[test]
-    fn fmt_tests() {
+    fn partial_cycle_map_fmt_tests() {
         let map = construct_default_map();
         println!("{map:?}");
     }

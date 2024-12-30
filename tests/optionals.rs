@@ -10,13 +10,6 @@ mod tests {
     }
 
     #[test]
-    fn convert_test() {
-        let op_1: OptionalPair<&str, &str> = SomeLeft("hello");
-        let op_2: OptionalPair<String, String> = op_1.convert();
-        assert_eq!(op_2, SomeLeft(String::from("hello")));
-    }
-
-    #[test]
     fn map_tests() {
         let no: OptionalPair<u64, u64> = Neither;
         let sl: OptionalPair<u64, u64> = SomeLeft(42);
@@ -67,25 +60,25 @@ mod tests {
     fn from_tests() {
         // None tests
         let no: OptionalPair<u64, u64> = Neither;
-        let no_opt: Option<(Option<u64>, Option<u64>)> = no.clone().into();
+        let no_opt: (Option<u64>, Option<u64>) = no.clone().into();
         assert_eq!(no, OptionalPair::from(no_opt));
         let no_tup: (Option<u64>, Option<u64>) = no.clone().into();
         assert_eq!(no, OptionalPair::from(no_tup));
         // SomeLeft tests
         let sl: OptionalPair<u64, u64> = SomeLeft(42);
-        let sl_opt: Option<(Option<u64>, Option<u64>)> = sl.clone().into();
+        let sl_opt: (Option<u64>, Option<u64>) = sl.clone().into();
         assert_eq!(sl, OptionalPair::from(sl_opt));
         let sl_tup: (Option<u64>, Option<u64>) = sl.clone().into();
         assert_eq!(sl, OptionalPair::from(sl_tup));
         // SomeRight tests
         let sr: OptionalPair<u64, u64> = SomeRight(84);
-        let sr_opt: Option<(Option<u64>, Option<u64>)> = sr.clone().into();
+        let sr_opt: (Option<u64>, Option<u64>) = sr.clone().into();
         assert_eq!(sr, OptionalPair::from(sr_opt));
         let sr_tup: (Option<u64>, Option<u64>) = sr.clone().into();
         assert_eq!(sr, OptionalPair::from(sr_tup));
         // SomeBoth tests
         let sb: OptionalPair<u64, u64> = SomeBoth(42, 84);
-        let sb_opt: Option<(Option<u64>, Option<u64>)> = sb.clone().into();
+        let sb_opt: (Option<u64>, Option<u64>) = sb.clone().into();
         assert_eq!(sb, OptionalPair::from(sb_opt));
         let sb_tup: (Option<u64>, Option<u64>) = sb.clone().into();
         assert_eq!(sb, OptionalPair::from(sb_tup));

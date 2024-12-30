@@ -27,7 +27,7 @@ mod tests {
     }
 
     #[test]
-    fn construction_test() {
+    fn cycle_map_construction_test() {
         let map: CycleMap<String, TestingStruct> = CycleMap::new();
         assert_eq!(map.len(), 0);
         assert_eq!(map.capacity(), 0);
@@ -41,7 +41,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_test() {
+    fn cycle_map_insert_test() {
         let mut map: CycleMap<u64, String> = CycleMap::with_capacity(100);
         for i in 0..100 {
             let opt = map.insert(i, i.to_string());
@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn get_tests() {
+    fn cycle_map_get_tests() {
         let map: CycleMap<String, TestingStruct> = construct_default_map();
         assert!(map.contains_left(&0.to_string()));
         assert!(map.contains_right(&TestingStruct::from_value(0)));
@@ -71,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_tests() {
+    fn cycle_map_remove_tests() {
         // Double remove
         let mut map: CycleMap<String, TestingStruct> = construct_default_map();
         let opt = map.remove(&"42".to_string(), &TestingStruct::from_value(42));
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_left_not_found_test() {
+    fn cycle_map_swap_left_not_found_test() {
         // Not Found
         let mut map = construct_default_map();
         let opt = map.swap_left(&"101".to_string(), "102".to_string());
@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_left_checked_test() {
+    fn cycle_map_swap_left_checked_test() {
         let mut map = construct_default_map();
         let opt = map.swap_left_checked(
             &"0".to_string(),
@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_left_or_insert_tests() {
+    fn cycle_map_swap_left_or_insert_tests() {
         let mut map = construct_default_map();
         let opt = map.swap_left_or_insert(
             &"0".to_string(),
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_not_found_test() {
+    fn cycle_map_swap_right_not_found_test() {
         // Not Found
         let mut map = construct_default_map();
         let opt = map.swap_right(
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_checked_test() {
+    fn cycle_map_swap_right_checked_test() {
         let mut map = construct_default_map();
         let opt = map.swap_right_checked(
             &TestingStruct::from_value(1),
@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_or_insert_tests() {
+    fn cycle_map_swap_right_or_insert_tests() {
         let mut map = construct_default_map();
         let opt = map.swap_right_or_insert(
             &TestingStruct::from_value(0),
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_test() {
+    fn cycle_map_retain_test() {
         let mut map: CycleMap<u64, String> = CycleMap::with_capacity(100);
         for i in 0..100 {
             let opt = map.insert(i, i.to_string());
@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn iter_tests() {
+    fn cycle_map_iter_tests() {
         // Main iter
         let map = construct_default_map();
         let iter = map.iter();
@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn drain_tests() {
+    fn cycle_map_drain_tests() {
         let mut map: CycleMap<u64, String> = (0..100).map(|i| (i, i.to_string())).collect();
         let cap = map.capacity();
         let other_map: CycleMap<u64, String> = map.drain().collect();
@@ -292,14 +292,14 @@ mod tests {
     }
 
     #[test]
-    fn eq_test() {
+    fn cycle_map_eq_test() {
         let map = construct_default_map();
         assert_eq!(map.clone(), construct_default_map());
         assert_eq!(construct_default_map(), construct_default_map());
     }
 
     #[test]
-    fn shrink_tests() {
+    fn cycle_map_shrink_tests() {
         let mut map: CycleMap<i32, i32> = CycleMap::with_capacity(100);
         let cap = map.capacity();
         map.insert(1, 2);
@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn reserve_tests() {
+    fn cycle_map_reserve_tests() {
         let mut map: CycleMap<&str, i32> = CycleMap::new();
         let old_cap = map.capacity();
         assert_eq!(old_cap, 0);
@@ -344,20 +344,20 @@ mod tests {
     }
 
     #[test]
-    fn fmt_tests() {
+    fn cycle_map_fmt_tests() {
         let map = construct_default_map();
         println!("{map:?}");
     }
 
     #[test]
-    fn misc_tests() {
+    fn cycle_map_misc_tests() {
         let map = construct_default_map();
         let _hasher = map.hasher();
         assert!(!map.are_paired(&"0".to_string(), &TestingStruct::from_value(1)));
     }
 
     #[test]
-    fn hash_collision() {
+    fn cycle_map_hash_collision() {
         #[derive(Debug, PartialEq, Eq)]
         struct Collide(usize);
 

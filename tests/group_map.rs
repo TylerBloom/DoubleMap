@@ -9,6 +9,15 @@ mod tests {
         pub(crate) data: String,
     }
 
+    impl TestingStruct {
+        pub(crate) fn from_value(value: u64) -> Self {
+            Self {
+                value,
+                data: value.to_string(),
+            }
+        }
+    }
+
     fn construct_default_map() -> GroupMap<String, TestingStruct> {
         (0..10)
             .map(|i| (i.to_string(), TestingStruct::from_value(i)))
@@ -16,7 +25,7 @@ mod tests {
     }
 
     #[test]
-    fn construction_test() {
+    fn group_map_construction_test() {
         let map: GroupMap<String, TestingStruct> = GroupMap::new();
         assert_eq!(map.len_left(), 0);
         assert_eq!(map.len_right(), 0);
@@ -36,8 +45,8 @@ mod tests {
     }
 
     #[test]
-    fn insert_tests() {
-        let vals = vec![
+    fn group_map_insert_tests() {
+        let vals = [
             "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
         ];
         let mut map: GroupMap<String, usize> = GroupMap::new();
@@ -72,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_remove_test() {
+    fn group_map_insert_remove_test() {
         let mut map: GroupMap<u64, String> = GroupMap::with_capacity(100);
         for i in 0..100 {
             let opt = map.insert_remove(i, i.to_string());
@@ -88,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_remove_tests() {
+    fn group_map_swap_right_remove_tests() {
         let mut map: GroupMap<String, TestingStruct> = construct_default_map();
 
         // Should be equivalent to insert_right
@@ -116,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn swap_right_tests() {
+    fn group_map_swap_right_tests() {
         let mut map: GroupMap<String, TestingStruct> = construct_default_map();
 
         // Should be equivalent to insert_right
@@ -142,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn get_tests() {
+    fn group_map_get_tests() {
         let map: GroupMap<String, TestingStruct> = construct_default_map();
         assert!(map.contains_left(&0.to_string()));
         assert!(map.contains_right(&TestingStruct::from_value(0)));
@@ -158,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_tests() {
+    fn group_map_remove_tests() {
         // Double remove
         let mut map: GroupMap<String, TestingStruct> = construct_default_map();
         let opt = map.remove(&"42".to_string(), &TestingStruct::from_value(42));
@@ -192,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_paired() {
+    fn group_map_retain_paired() {
         let mut map: GroupMap<u64, String> = GroupMap::with_capacity(100);
         for i in 0..100 {
             if i < 50 {
@@ -217,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn retain_unpaired() {
+    fn group_map_retain_unpaired() {
         let mut map: GroupMap<u64, String> = GroupMap::with_capacity(100);
         for i in 0..100 {
             if i < 50 {
@@ -236,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn iter_tests() {
+    fn group_map_iter_tests() {
         // Main iter
         let map = construct_default_map();
         let iter = map.iter();
@@ -268,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn _paired_iter_tests() {
+    fn group_map_paired_iter_tests() {
         // paired iter
         let map = construct_default_map();
         let iter = map.iter_paired();
@@ -296,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn unpaired_iter_tests() {
+    fn group_map_unpaired_iter_tests() {
         // Unpaired iter
         let map: GroupMap<String, TestingStruct> = (0..10)
             .map(|i| (None, TestingStruct::from_value(i)))
@@ -313,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn pairing_tests() {
+    fn group_map_pairing_tests() {
         let mut map: GroupMap<String, TestingStruct> = (0..10)
             .map(|i| (None, TestingStruct::from_value(i)))
             .collect();
@@ -340,30 +349,21 @@ mod tests {
     }
 
     #[test]
-    fn misc_tests() {
+    fn group_map_misc_tests() {
         let map = construct_default_map();
         assert!(!map.are_paired(&"0".to_string(), &TestingStruct::from_value(1)));
     }
 
     #[test]
-    fn eq_test() {
+    fn group_map_eq_test() {
         let map = construct_default_map();
         assert_eq!(map.clone(), construct_default_map());
         assert_eq!(construct_default_map(), construct_default_map());
     }
 
     #[test]
-    fn fmt_tests() {
+    fn group_map_fmt_tests() {
         let map = construct_default_map();
         println!("{map:?}");
-    }
-
-    impl TestingStruct {
-        pub(crate) fn from_value(value: u64) -> Self {
-            Self {
-                value,
-                data: value.to_string(),
-            }
-        }
     }
 }
