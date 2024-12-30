@@ -157,8 +157,8 @@ where
         let opt_from_left = self.remove_via_left(&left);
         let opt_from_right = self.remove_via_right(&right);
         let digest = (opt_from_left, opt_from_right);
-        let l_hash = make_hash::<L, S>(&self.hash_builder, &left);
-        let r_hash = make_hash::<R, S>(&self.hash_builder, &right);
+        let l_hash = make_hash(&self.hash_builder, &left);
+        let r_hash = make_hash(&self.hash_builder, &right);
         let left_pairing = MappingPair {
             value: left,
             hash: Some(r_hash),
@@ -170,16 +170,10 @@ where
             id: self.counter,
         };
         self.counter += 1;
-        self.left_set.insert_unique(
-            l_hash,
-            left_pairing,
-            make_hasher::<MappingPair<L>, S>(&self.hash_builder),
-        );
-        self.right_set.insert_unique(
-            r_hash,
-            right_pairing,
-            make_hasher::<MappingPair<R>, S>(&self.hash_builder),
-        );
+        self.left_set
+            .insert_unique(l_hash, left_pairing, make_hasher(&self.hash_builder));
+        self.right_set
+            .insert_unique(r_hash, right_pairing, make_hasher(&self.hash_builder));
         digest
     }
 
@@ -540,8 +534,8 @@ where
     /// assert!(!map.unpair(&2, &"2"));
     /// ```
     pub fn unpair(&mut self, left: &L, right: &R) -> bool {
-        let l_hash = make_hash::<L, S>(&self.hash_builder, left);
-        let r_hash = make_hash::<R, S>(&self.hash_builder, right);
+        let l_hash = make_hash(&self.hash_builder, left);
+        let r_hash = make_hash(&self.hash_builder, right);
         let opt_left = self.left_set.find_mut(l_hash, equivalent_key(left));
         let opt_right = self.right_set.find_mut(r_hash, equivalent_key(right));
         match (opt_left, opt_right) {
@@ -567,7 +561,7 @@ where
     ///
     /// Returns false if the item isn't found or is unpaired. Returns true otherwise.
     pub fn is_left_paired(&self, left: &L) -> bool {
-        let l_hash = make_hash::<L, S>(&self.hash_builder, left);
+        let l_hash = make_hash(&self.hash_builder, left);
         let opt_left = self.left_set.find(l_hash, equivalent_key(left));
         match opt_left {
             Some(l) => l.hash.is_some(),
@@ -579,7 +573,7 @@ where
     ///
     /// Returns false if the item isn't found or is unpaired. Returns true otherwise.
     pub fn is_right_paired(&self, right: &R) -> bool {
-        let r_hash = make_hash::<R, S>(&self.hash_builder, right);
+        let r_hash = make_hash(&self.hash_builder, right);
         let opt_right = self.right_set.find(r_hash, equivalent_key(right));
         match opt_right {
             Some(r) => r.hash.is_some(),
@@ -601,8 +595,8 @@ where
     /// assert!(!map.are_paired(&2, &"2"));
     /// ```
     pub fn are_paired(&self, left: &L, right: &R) -> bool {
-        let l_hash = make_hash::<L, S>(&self.hash_builder, left);
-        let r_hash = make_hash::<R, S>(&self.hash_builder, right);
+        let l_hash = make_hash(&self.hash_builder, left);
+        let r_hash = make_hash(&self.hash_builder, right);
         let opt_left = self.left_set.find(l_hash, equivalent_key(left));
         let opt_right = self.right_set.find(r_hash, equivalent_key(right));
         match (opt_left, opt_right) {
@@ -627,7 +621,7 @@ where
     /// assert!(!map.contains_left(&3));
     /// ```
     pub fn contains_left(&self, left: &L) -> bool {
-        let hash = make_hash::<L, S>(&self.hash_builder, left);
+        let hash = make_hash(&self.hash_builder, left);
         self.left_set.find(hash, equivalent_key(left)).is_some()
     }
 
@@ -645,7 +639,7 @@ where
     /// assert!(!map.contains_right(&"3"));
     /// ```
     pub fn contains_right(&self, right: &R) -> bool {
-        let hash = make_hash::<R, S>(&self.hash_builder, right);
+        let hash = make_hash(&self.hash_builder, right);
         self.right_set.find(hash, equivalent_key(right)).is_some()
     }
 
@@ -716,7 +710,7 @@ where
     /// assert_eq!(map.remove_via_left(&3), Neither);
     /// ```
     pub fn remove_via_left(&mut self, item: &L) -> OptionalPair<L, R> {
-        let l_hash = make_hash::<L, S>(&self.hash_builder, item);
+        let l_hash = make_hash(&self.hash_builder, item);
         let Ok(entry) = self.left_set.find_entry(l_hash, equivalent_key(item)) else {
             return Neither;
         };
@@ -776,7 +770,7 @@ where
     /// assert_eq!(map.remove_via_right(&"3"), Neither);
     /// ```
     pub fn remove_via_right(&mut self, item: &R) -> OptionalPair<L, R> {
-        let r_hash = make_hash::<R, S>(&self.hash_builder, item);
+        let r_hash = make_hash(&self.hash_builder, item);
         let Ok(entry) = self.right_set.find_entry(r_hash, equivalent_key(item)) else {
             return Neither;
         };
@@ -853,7 +847,7 @@ where
         self.left_set.insert_unique(
             new_l_hash,
             new_left_pairing,
-            make_hasher::<MappingPair<L>, S>(&self.hash_builder),
+            make_hasher(&self.hash_builder),
         );
         // Return old left pairing
         if eq_opt.is_none() {
@@ -920,7 +914,7 @@ where
         new: L,
         to_insert: R,
     ) -> OptionalPair<L, OptionalPair<L, R>> {
-        let old_l_hash = make_hash::<L, S>(&self.hash_builder, old);
+        let old_l_hash = make_hash(&self.hash_builder, old);
         if self
             .left_set
             .find(old_l_hash, equivalent_key(old))
@@ -1076,7 +1070,7 @@ where
         to_insert: L,
     ) -> OptionalPair<R, OptionalPair<L, R>> {
         // Find the old right pairing
-        let old_r_hash = make_hash::<R, S>(&self.hash_builder, old);
+        let old_r_hash = make_hash(&self.hash_builder, old);
         if self
             .right_set
             .find(old_r_hash, equivalent_key(old))
@@ -1124,7 +1118,7 @@ where
         R: Borrow<Q>,
         Q: Hash + Eq + PartialEq<R>,
     {
-        let r_hash = make_hash::<_, S>(&self.hash_builder, item);
+        let r_hash = make_hash(&self.hash_builder, item);
         let right_pairing: &MappingPair<R> = self.get_right_inner_with_hash(item, r_hash)?;
         let hash = right_pairing.hash?;
         match self
@@ -1153,8 +1147,8 @@ where
         L: Borrow<Q>,
         Q: Hash + Eq + PartialEq<L>,
     {
-        let l_hash = make_hash::<_, S>(&self.hash_builder, item);
-        let left_pairing: &MappingPair<L> = self.get_left_inner_with_hash(item, l_hash)?;
+        let l_hash = make_hash(&self.hash_builder, item);
+        let left_pairing = self.get_left_inner_with_hash(item, l_hash)?;
         let hash = left_pairing.hash?;
         match self
             .right_set

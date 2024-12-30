@@ -36,7 +36,7 @@ pub enum Either<L, R> {
     Right(R),
 }
 
-impl<L,R> Either<L, R> {
+impl<L, R> Either<L, R> {
     pub fn as_left(&self) -> Option<&L> {
         match self {
             Self::Left(left) => Some(left),
