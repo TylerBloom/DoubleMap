@@ -56,6 +56,7 @@ mod tests {
             map.insert(i.to_string(), i);
             assert!(map.are_paired(&i.to_string(), &i));
         });
+        assert_eq!(map.count_pairings(), 10);
 
         // Should be the same as calling insert_right
         (0..10).for_each(|i| {
@@ -63,13 +64,15 @@ mod tests {
             assert!(map.are_paired(&i.to_string(), &i));
             assert!(map.are_paired(&vals[i].to_string(), &i));
         });
+        assert_eq!(map.count_pairings(), 20);
 
         // Repair existing left items with new right items
-        (0..10).for_each(|i| {
+        (1..10).for_each(|i| {
             map.insert(i.to_string(), 10 * i);
             assert!(!map.are_paired(&i.to_string(), &i));
             assert!(map.contains_right(&i));
         });
+        assert_eq!(map.count_pairings(), 20);
 
         // Pair existing left and right items
         for i in 1..10 {
@@ -249,9 +252,8 @@ mod tests {
         // Main iter
         let map = construct_default_map();
         let iter = map.iter();
-        println!("{iter:?}");
-        assert_eq!(iter.len(), 10);
-        assert_eq!(iter.clone().len(), 10);
+        assert_eq!(iter.clone().count(), 10);
+        assert_eq!(iter.count(), 10);
         // Left iter
         let map = construct_default_map();
         let iter = map.iter_left();
@@ -307,16 +309,25 @@ mod tests {
     #[test]
     fn group_map_unpaired_iter_tests() {
         // Unpaired iter
-        let map: GroupMap<String, TestingStruct> = (0..10)
-            .map(|i| (None, TestingStruct::from_value(i)))
-            .collect();
+        let mut map: GroupMap<u64, String> = GroupMap::with_capacity(100);
+        for i in 0..100 {
+            if i < 50 {
+                let opt = map.insert_remove(i, i.to_string());
+                assert_eq!(opt, (None, None));
+            } else {
+                let opt = map.insert_right(i.to_string());
+                assert_eq!(opt, None);
+            }
+        }
+        assert_eq!(map.count_pairings(), 50);
         let iter = map.iter_unpaired();
         println!("{iter:?}");
-        assert_eq!(iter.len(), 10);
-        assert_eq!(iter.clone().len(), 10);
+        assert_eq!(iter.len(), 50);
+        assert_eq!(iter.clone().len(), 50);
         let map = construct_default_map();
         let iter = map.iter_unpaired();
         println!("{iter:?}");
+        assert_eq!(map.count_pairings(), 10);
         assert_eq!(iter.len(), 0);
         assert_eq!(iter.clone().len(), 0);
     }
